@@ -1,6 +1,6 @@
-# NERV Typing Simulation
+# keysmash
 
-A sleek CLI typing test inspired by Neon Genesis Evangelion's aesthetic—neon colors and retro futurism meet typing practice.
+A sleek CLI typing test.
 
 ## Features
 
@@ -14,13 +14,13 @@ A sleek CLI typing test inspired by Neon Genesis Evangelion's aesthetic—neon c
 
 ```bash
 # Clone and build
-git clone https://github.com/yourusername/typing-eva.git
-cd typing-eva
+git clone https://github.com/phrazzld/keysmash.git
+cd keysmash
 go mod tidy
-go build -o typing-eva main.go
+go build -o keysmash main.go
 
 # Run
-./typing-eva
+./keysmash
 ```
 
 ## Adding Custom Tests
@@ -44,7 +44,7 @@ Once running, the interface is intuitive:
 
 ## About
 
-Built with Go using [tcell](https://github.com/gdamore/tcell) for terminal rendering. The aesthetic draws inspiration from NERV terminals in Evangelion, utilizing a neon color palette and minimalist design.
+Built with Go using [tcell](https://github.com/gdamore/tcell) for terminal rendering.
 
 ## License
 
