@@ -260,44 +260,65 @@ func renderScreen(screen tcell.Screen, state *TestState, width int) {
 	// Draw user input text with character-by-character styling
 	drawText(screen, 2, 4+len(refLines)+3, titleStyle, "Your Input:")
 	
-	// Display user input with character-by-character styling
+	// Create a wrapped version of user input for display
+	userInputLines := wrapText(state.userInput, width-4)
 	inputY := 4 + len(refLines) + 4
-	inputX := 2
 	
-	for i, r := range state.userInput {
-		var style tcell.Style
-		
-		if i < len(state.referenceText) {
-			if r == []rune(state.referenceText)[i] {
-				style = correctStyle
+	// Get character-by-character styling info first
+	userInputRunes := []rune(state.userInput)
+	refTextRunes := []rune(state.referenceText)
+	
+	// Create an array of styles for each character in the user input
+	runeStyles := make([]tcell.Style, len(userInputRunes))
+	for i, r := range userInputRunes {
+		if i < len(refTextRunes) {
+			if r == refTextRunes[i] {
+				runeStyles[i] = correctStyle
 			} else {
-				style = incorrectStyle
+				runeStyles[i] = incorrectStyle
 			}
 		} else {
-			style = incorrectStyle // Extra characters
-		}
-		
-		// Handle newlines for proper wrapping
-		if r == '\n' {
-			inputY++
-			inputX = 2
-			continue
-		}
-		
-		// Draw character
-		screen.SetContent(inputX, inputY, r, nil, style)
-		inputX += runewidth.RuneWidth(r)
-		
-		// Wrap to next line if exceeding width
-		if inputX >= width-2 {
-			inputY++
-			inputX = 2
+			runeStyles[i] = incorrectStyle // Extra characters
 		}
 	}
 	
-	// Draw cursor position (blinking underscore)
+	// Now render each line with proper word wrapping
+	runeOffset := 0 // Track which rune we're at in the original input
+	
+	for _, line := range userInputLines {
+		inputX := 2
+		
+		// Process each character in the line with its pre-calculated style
+		for _, r := range line {
+			// Use the pre-calculated style for this rune
+			if runeOffset < len(runeStyles) {
+				style := runeStyles[runeOffset]
+				screen.SetContent(inputX, inputY, r, nil, style)
+			} else {
+				// Fallback (shouldn't happen)
+				screen.SetContent(inputX, inputY, r, nil, incorrectStyle)
+			}
+			
+			inputX += runewidth.RuneWidth(r)
+			runeOffset++
+		}
+		
+		// Move to next line
+		inputY++
+	}
+	
+	// Draw cursor position (blinking underscore) at the end of the last line
 	if time.Now().UnixNano()/1e8%10 < 5 {
-		screen.SetContent(inputX, inputY, '_', nil, pendingStyle)
+		// If we have wrapped lines, put cursor at end of last line
+		if len(userInputLines) > 0 {
+			lastLine := userInputLines[len(userInputLines)-1]
+			cursorX := 2 + runewidth.StringWidth(lastLine)
+			cursorY := 4 + len(refLines) + 4 + len(userInputLines) - 1
+			screen.SetContent(cursorX, cursorY, '_', nil, pendingStyle)
+		} else {
+			// No text yet, cursor at beginning
+			screen.SetContent(2, 4 + len(refLines) + 4, '_', nil, pendingStyle)
+		}
 	}
 	
 	// Show timer and error count if test has started
@@ -312,31 +333,83 @@ func renderScreen(screen tcell.Screen, state *TestState, width int) {
 
 func wrapText(text string, width int) []string {
 	var lines []string
-	var currentLine string
-	currentWidth := 0
 	
-	for _, r := range text {
-		if r == '\n' {
-			lines = append(lines, currentLine)
-			currentLine = ""
-			currentWidth = 0
+	// Handle newlines properly
+	paragraphs := strings.Split(text, "\n")
+	
+	for _, paragraph := range paragraphs {
+		if paragraph == "" {
+			lines = append(lines, "")
 			continue
 		}
 		
-		runeWidth := runewidth.RuneWidth(r)
-		
-		if currentWidth+runeWidth > width {
-			lines = append(lines, currentLine)
-			currentLine = string(r)
-			currentWidth = runeWidth
-		} else {
-			currentLine += string(r)
-			currentWidth += runeWidth
+		words := strings.Fields(paragraph)
+		if len(words) == 0 {
+			lines = append(lines, "")
+			continue
 		}
-	}
-	
-	if currentLine != "" {
-		lines = append(lines, currentLine)
+		
+		currentLine := ""
+		currentWidth := 0
+		
+		for _, word := range words {
+			wordWidth := runewidth.StringWidth(word)
+			
+			// If word is too wide for its own line, split it
+			if wordWidth > width {
+				if currentLine != "" {
+					lines = append(lines, currentLine)
+					currentLine = ""
+					currentWidth = 0
+				}
+				
+				// Split the word manually
+				runes := []rune(word)
+				lineRunes := []rune{}
+				lineWidth := 0
+				
+				for _, r := range runes {
+					charWidth := runewidth.RuneWidth(r)
+					if lineWidth+charWidth > width {
+						lines = append(lines, string(lineRunes))
+						lineRunes = []rune{r}
+						lineWidth = charWidth
+					} else {
+						lineRunes = append(lineRunes, r)
+						lineWidth += charWidth
+					}
+				}
+				
+				if len(lineRunes) > 0 {
+					currentLine = string(lineRunes)
+					currentWidth = lineWidth
+				}
+				continue
+			}
+			
+			// Check if word fits on current line (plus space)
+			spaceNeeded := 0
+			if currentWidth > 0 {
+				spaceNeeded = 1
+			}
+			
+			if currentWidth+spaceNeeded+wordWidth <= width {
+				if currentWidth > 0 {
+					currentLine += " "
+					currentWidth++
+				}
+				currentLine += word
+				currentWidth += wordWidth
+			} else {
+				lines = append(lines, currentLine)
+				currentLine = word
+				currentWidth = wordWidth
+			}
+		}
+		
+		if currentLine != "" {
+			lines = append(lines, currentLine)
+		}
 	}
 	
 	return lines
