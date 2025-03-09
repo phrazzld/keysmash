@@ -1,0 +1,19 @@
+# Binary files
+typing-eva
+*.exe
+*.out
+
+# Go build artifacts
+/vendor/
+*.test
+*.prof
+
+# IDE directories
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
