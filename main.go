@@ -58,14 +58,19 @@ func main() {
 	for {
 		// Show welcome screen
 		showWelcomeScreen(screen)
-		waitForKey(screen)
+		if !waitForKey(screen) {
+			// User pressed Escape, exit the program
+			return
+		}
 
 		// Select and load a test
 		state, err := selectRandomTest()
 		if err != nil {
 			drawError(screen, fmt.Sprintf("Error loading test: %v", err))
-			waitForKey(screen)
-			return
+			if !waitForKey(screen) {
+				return // User pressed Escape to quit
+			}
+			continue
 		}
 
 		// Run the typing test
@@ -114,7 +119,7 @@ func showWelcomeScreen(screen tcell.Screen) {
 	drawText(screen, (width-runewidth.StringWidth(subtitle))/2, height/4+len(title)+2, subtitleStyle, subtitle)
 
 	// Draw instructions
-	instructions := "Press any key to begin..."
+	instructions := "Press any key to begin or [ESC] to quit..."
 	drawText(screen, (width-runewidth.StringWidth(instructions))/2, height/2+4, defaultStyle, instructions)
 
 	screen.Show()
@@ -328,6 +333,10 @@ func renderScreen(screen tcell.Screen, state *TestState, width int) {
 		drawText(screen, width-len(timerText)-2, 1, pendingStyle, timerText)
 	}
 	
+	// Show escape instruction
+	escText := "Press [ESC] to quit"
+	drawText(screen, 2, 1, pendingStyle, escText)
+	
 	screen.Show()
 }
 
@@ -517,7 +526,7 @@ func drawError(screen tcell.Screen, message string) {
 	
 	drawText(screen, (width-len(message))/2, height/3+2, defaultStyle, message)
 	
-	instruction := "Press any key to exit"
+	instruction := "Press any key to continue or [ESC] to quit"
 	drawText(screen, (width-len(instruction))/2, height/3+4, defaultStyle, instruction)
 	
 	screen.Show()
@@ -529,12 +538,16 @@ func drawText(screen tcell.Screen, x, y int, style tcell.Style, text string) {
 	}
 }
 
-func waitForKey(screen tcell.Screen) {
+func waitForKey(screen tcell.Screen) bool {
 	for {
 		ev := screen.PollEvent()
-		switch ev.(type) {
+		switch ev := ev.(type) {
 		case *tcell.EventKey:
-			return
+			// Return false if user pressed Escape (indicating quit)
+			if ev.Key() == tcell.KeyEscape {
+				return false
+			}
+			return true // Any other key continues
 		case *tcell.EventResize:
 			screen.Sync()
 		}
