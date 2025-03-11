@@ -1,13 +1,14 @@
-# keysmash
+# KEYSMASH
 
-A sleek CLI typing test.
+A minimalist terminal-based typing test application.
 
 ## Features
 
-- **Immersive Terminal Experience**: Terminal-based UI with Eva-inspired style
-- **Dynamic Test Selection**: Random quotes from local text files
-- **Real-time Feedback**: Color-coded input (green for correct, red for errors)
-- **Performance Metrics**: WPM calculation and error tracking
+- **Simple Terminal UI**: Clean, distraction-free interface
+- **Dynamic Test Selection**: Random quotes from various works of literature and pop culture
+- **Real-time Feedback**: Immediate typing feedback
+- **Performance Metrics**: WPM calculation and accuracy tracking
+- **Progress Visualization**: Live progress bar and completion percentage
 - **Cross-platform**: Works on macOS, Linux, and Windows terminals
 
 ## Quick Start
@@ -36,15 +37,17 @@ tests/
 
 ## Usage
 
-Once running, the interface is intuitive:
+The interface is straightforward:
 - Type the displayed text exactly as shown
-- Watch real-time feedback as you type
-- View your WPM and error count upon completion
-- `R`: Retry test | `N`: New test | `Q`: Quit
+- Watch your progress with real-time WPM and accuracy stats
+- View your performance metrics upon completion
+- Commands: `R`: Retry test | `N`: New test | `Q`: Quit
 
 ## About
 
-Built with Go using [tcell](https://github.com/gdamore/tcell) for terminal rendering.
+KEYSMASH was built with Go using [tcell](https://github.com/gdamore/tcell) for terminal rendering. The application focuses on providing a clean, distraction-free typing experience that helps users practice and improve their typing speed and accuracy.
+
+The minimalist design prioritizes functionality while maintaining readability and ease of use, making it suitable for regular typing practice sessions.
 
 ## License
 
