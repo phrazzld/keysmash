@@ -18,5 +18,9 @@ typing-eva
 .DS_Store
 Thumbs.db
 
+# Project specific files
 PLAN.md
+TODO.md
+DEV-REF.md
+BACKLOG.md
 keysmash
