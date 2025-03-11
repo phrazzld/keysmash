@@ -19,6 +19,7 @@ type TestState struct {
 	endTime       time.Time
 	testStarted   bool
 	testComplete  bool
+	testFile      string
 }
 
 func main() {
@@ -31,7 +32,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error creating screen: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	if err := screen.Init(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing screen: %v\n", err)
 		os.Exit(1)
@@ -39,12 +40,7 @@ func main() {
 	defer screen.Fini()
 
 	// Set default style
-	defStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorDefault)
-	screen.SetStyle(defStyle)
-	
-	// Make defStyle available to other functions
+	defStyle := tcell.StyleDefault
 	screen.SetStyle(defStyle)
 
 	// Check if tests directory exists
@@ -87,40 +83,15 @@ func showWelcomeScreen(screen tcell.Screen) {
 	screen.Clear()
 	width, height := screen.Size()
 
-	// Define colors
-	titleStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorFuchsia).
-		Bold(true)
-
-	subtitleStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorAqua)
-		
-	defaultStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorDefault)
-
-	// ASCII Art title
-	title := []string{
-		"╔══════════════════════════════╗",
-		"║       NERV TYPING TEST       ║",
-		"║    SYNCHRONIZATION SYSTEM    ║",
-		"╚══════════════════════════════╝",
-	}
-
-	// Draw title centered
-	for i, line := range title {
-		drawText(screen, (width-runewidth.StringWidth(line))/2, height/4+i, titleStyle, line)
-	}
-
-	// Draw subtitle
-	subtitle := "Initializing NERV Typing Simulation. Prepare for input."
-	drawText(screen, (width-runewidth.StringWidth(subtitle))/2, height/4+len(title)+2, subtitleStyle, subtitle)
-
-	// Draw instructions
-	instructions := "Press any key to begin or [ESC] to quit..."
-	drawText(screen, (width-runewidth.StringWidth(instructions))/2, height/2+4, defaultStyle, instructions)
+	// Draw basic welcome information
+	title := "KEYSMASH"
+	drawCenteredText(screen, width/2, height/2-3, tcell.StyleDefault, title)
+	
+	subtitle := "TYPING TEST"
+	drawCenteredText(screen, width/2, height/2-1, tcell.StyleDefault, subtitle)
+	
+	prompt := "Press any key to start, ESC to quit"
+	drawCenteredText(screen, width/2, height/2+3, tcell.StyleDefault, prompt)
 
 	screen.Show()
 }
@@ -146,7 +117,7 @@ func selectRandomTest() (TestState, error) {
 
 	// Select random file
 	randomFile := textFiles[rand.Intn(len(textFiles))]
-	
+
 	// Read file content
 	content, err := os.ReadFile("tests/" + randomFile.Name())
 	if err != nil {
@@ -159,19 +130,20 @@ func selectRandomTest() (TestState, error) {
 		errors:        0,
 		testStarted:   false,
 		testComplete:  false,
+		testFile:      randomFile.Name(),
 	}, nil
 }
 
 func runTypingTest(screen tcell.Screen, state *TestState) TestState {
 	width, _ := screen.Size()
-	
+
 	for {
 		// Render current state
 		renderScreen(screen, state, width)
-		
+
 		// Poll for events
 		ev := screen.PollEvent()
-		
+
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
 			screen.Sync()
@@ -188,9 +160,9 @@ func runTypingTest(screen tcell.Screen, state *TestState) TestState {
 				}
 			} else if ev.Key() == tcell.KeyEnter {
 				// Handle enter key - add a newline if reference text has one
-				if len(state.userInput) < len(state.referenceText) && 
-				   len(state.referenceText) > len(state.userInput) && 
-				   state.referenceText[len(state.userInput)] == '\n' {
+				if len(state.userInput) < len(state.referenceText) &&
+					len(state.referenceText) > len(state.userInput) &&
+					state.referenceText[len(state.userInput)] == '\n' {
 					state.userInput += "\n"
 				}
 			} else if r := ev.Rune(); r != 0 {
@@ -199,9 +171,9 @@ func runTypingTest(screen tcell.Screen, state *TestState) TestState {
 					state.testStarted = true
 					state.startTime = time.Now()
 				}
-				
+
 				state.userInput += string(r)
-				
+
 				// Check for error
 				if len(state.userInput) <= len(state.referenceText) {
 					// Check if character matches
@@ -212,9 +184,9 @@ func runTypingTest(screen tcell.Screen, state *TestState) TestState {
 					// Extra character is an error
 					state.errors++
 				}
-				
+
 				// Check if test is complete
-				if state.userInput == state.referenceText {
+				if len(state.userInput) == len(state.referenceText) && state.userInput == state.referenceText {
 					state.testComplete = true
 					state.endTime = time.Now()
 					return *state
@@ -226,117 +198,135 @@ func runTypingTest(screen tcell.Screen, state *TestState) TestState {
 
 func renderScreen(screen tcell.Screen, state *TestState, width int) {
 	screen.Clear()
+
+	// Get screen dimensions
+	width, screenHeight := screen.Size()
 	
-	// Define styles
-	titleStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorFuchsia)
+	// Set horizontal padding
+	hPadding := 4
 	
-	correctStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorGreen)
+	// Calculate content width for wrapping
+	contentWidth := width - (hPadding * 2)
 	
-	incorrectStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorRed)
+	// Draw header with more padding
+	headerText := "KEYSMASH - TYPING TEST"
+	drawCenteredText(screen, width/2, 1, tcell.StyleDefault, headerText)
 	
-	pendingStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorAqua)
+	// Show file name
+	sourceText := fmt.Sprintf("Source: %s", state.testFile)
+	drawCenteredText(screen, width/2, 3, tcell.StyleDefault, sourceText)
 	
-	// Draw title
-	drawText(screen, 2, 1, titleStyle, "NERV TYPING TEST - Synchronization in progress...")
-	
-	// Wrap reference text to fit screen width
-	refLines := wrapText(state.referenceText, width-4)
-	_ = wrapText(state.userInput, width-4) // Just to avoid unused variable
-	
-	// Draw reference text
-	drawText(screen, 2, 3, titleStyle, "Reference Text:")
-	for i, line := range refLines {
-		drawText(screen, 2, 4+i, pendingStyle, line)
-	}
-	
-	// Draw horizontal line
-	for x := 0; x < width; x++ {
-		screen.SetContent(x, 4+len(refLines)+1, tcell.RuneHLine, nil, titleStyle)
-	}
-	
-	// Draw user input text with character-by-character styling
-	drawText(screen, 2, 4+len(refLines)+3, titleStyle, "Your Input:")
-	
-	// Create a wrapped version of user input for display
-	userInputLines := wrapText(state.userInput, width-4)
-	inputY := 4 + len(refLines) + 4
-	
-	// Get character-by-character styling info first
-	userInputRunes := []rune(state.userInput)
-	refTextRunes := []rune(state.referenceText)
-	
-	// Create an array of styles for each character in the user input
-	runeStyles := make([]tcell.Style, len(userInputRunes))
-	for i, r := range userInputRunes {
-		if i < len(refTextRunes) {
-			if r == refTextRunes[i] {
-				runeStyles[i] = correctStyle
-			} else {
-				runeStyles[i] = incorrectStyle
-			}
-		} else {
-			runeStyles[i] = incorrectStyle // Extra characters
-		}
-	}
-	
-	// Now render each line with proper word wrapping
-	runeOffset := 0 // Track which rune we're at in the original input
-	
-	for _, line := range userInputLines {
-		inputX := 2
-		
-		// Process each character in the line with its pre-calculated style
-		for _, r := range line {
-			// Use the pre-calculated style for this rune
-			if runeOffset < len(runeStyles) {
-				style := runeStyles[runeOffset]
-				screen.SetContent(inputX, inputY, r, nil, style)
-			} else {
-				// Fallback (shouldn't happen)
-				screen.SetContent(inputX, inputY, r, nil, incorrectStyle)
-			}
-			
-			inputX += runewidth.RuneWidth(r)
-			runeOffset++
-		}
-		
-		// Move to next line
-		inputY++
-	}
-	
-	// Draw cursor position (blinking underscore) at the end of the last line
-	if time.Now().UnixNano()/1e8%10 < 5 {
-		// If we have wrapped lines, put cursor at end of last line
-		if len(userInputLines) > 0 {
-			lastLine := userInputLines[len(userInputLines)-1]
-			cursorX := 2 + runewidth.StringWidth(lastLine)
-			cursorY := 4 + len(refLines) + 4 + len(userInputLines) - 1
-			screen.SetContent(cursorX, cursorY, '_', nil, pendingStyle)
-		} else {
-			// No text yet, cursor at beginning
-			screen.SetContent(2, 4 + len(refLines) + 4, '_', nil, pendingStyle)
-		}
-	}
-	
-	// Show timer and error count if test has started
+	// Draw stats if test started
 	if state.testStarted {
 		elapsed := time.Since(state.startTime).Seconds()
-		timerText := fmt.Sprintf("Time: %.1fs | Errors: %d", elapsed, state.errors)
-		drawText(screen, width-len(timerText)-2, 1, pendingStyle, timerText)
+		
+		// Calculate stats
+		wpm := float64(len(state.userInput)/5) / (elapsed / 60.0)
+		if wpm < 0 || elapsed < 1 {
+			wpm = 0
+		}
+		
+		// Display stats
+		statsText := fmt.Sprintf("Time: %.1fs | WPM: %.1f | Errors: %d", 
+			elapsed, wpm, state.errors)
+		drawCenteredText(screen, width/2, 5, tcell.StyleDefault, statsText)
+		
+		// Display progress percentage
+		completionPct := float64(len(state.userInput)) / float64(len(state.referenceText))
+		if completionPct > 1.0 {
+			completionPct = 1.0
+		}
+		
+		pctText := fmt.Sprintf("Progress: %d%%", int(completionPct*100))
+		drawText(screen, hPadding, 7, tcell.StyleDefault, pctText)
 	}
 	
-	// Show escape instruction
-	escText := "Press [ESC] to quit"
-	drawText(screen, 2, 1, pendingStyle, escText)
+	// Draw divider with more padding
+	drawText(screen, 0, 9, tcell.StyleDefault, strings.Repeat("-", width))
+
+	// Determine maximum content height to prevent overflow
+	maxContentHeight := screenHeight - 18 // More space for headers and footers
 	
+	// Draw reference text title with more padding
+	drawText(screen, hPadding, 11, tcell.StyleDefault, "Text to type:")
+	
+	// Wrap and draw reference text
+	refLines := wrapText(state.referenceText, contentWidth)
+	
+	// Limit to half of available space
+	maxRefLines := maxContentHeight / 2
+	if len(refLines) > maxRefLines {
+		refLines = refLines[:maxRefLines]
+	}
+	
+	// Draw reference text with more padding between lines
+	for i, line := range refLines {
+		drawText(screen, hPadding, 13+i, tcell.StyleDefault, line)
+	}
+	
+	// Draw separator between reference and input with more space
+	separatorY := 13 + len(refLines) + 2
+	drawText(screen, 0, separatorY, tcell.StyleDefault, strings.Repeat("-", width))
+	
+	// Draw input area label with more padding
+	inputLabelY := separatorY + 2
+	drawText(screen, hPadding, inputLabelY, tcell.StyleDefault, "Your typing:")
+	
+	// Draw user input with more padding
+	userInputY := inputLabelY + 2
+	
+	// Fixed cursor position calculation to handle multibyte characters correctly
+	cursorPos := 0
+	cursorLine := 0
+	
+	if len(state.userInput) > 0 {
+		// Wrap user input for display
+		inputLines := wrapText(state.userInput, contentWidth)
+		
+		// Draw user input lines
+		for i, line := range inputLines {
+			drawText(screen, hPadding, userInputY+i, tcell.StyleDefault, line)
+		}
+		
+		// Calculate cursor position
+		if len(inputLines) > 0 {
+			// Last line length gives cursor position
+			lastLine := inputLines[len(inputLines)-1]
+			cursorPos = runewidth.StringWidth(lastLine)
+			cursorLine = len(inputLines) - 1
+		}
+	}
+	
+	// Draw blinking cursor at end of input
+	cursorX := hPadding + cursorPos
+	cursorY := userInputY + cursorLine
+	
+	if time.Now().UnixNano()/4e7%10 >= 5 {
+		screen.SetContent(cursorX, cursorY, ' ', nil, tcell.StyleDefault.Reverse(true))
+	} else {
+		screen.SetContent(cursorX, cursorY, '_', nil, tcell.StyleDefault)
+	}
+	
+	// Draw progress indicator with more padding
+	progressBarY := screenHeight - 3
+	progress := 0
+	if len(state.referenceText) > 0 {
+		progress = len(state.userInput) * 100 / len(state.referenceText)
+	}
+	
+	// Create a wider progress bar
+	progressBarWidth := 60
+	filledWidth := progressBarWidth * progress / 100
+	
+	progressBar := fmt.Sprintf("[%s%s] %d%%", 
+		strings.Repeat("=", filledWidth), 
+		strings.Repeat(" ", progressBarWidth-filledWidth),
+		progress)
+	drawText(screen, hPadding, progressBarY, tcell.StyleDefault, progressBar)
+	
+	// Draw help text
+	drawText(screen, hPadding, screenHeight-1, tcell.StyleDefault, "ESC to quit")
+
 	screen.Show()
 }
 
@@ -428,54 +418,35 @@ func handlePostTest(screen tcell.Screen, state TestState, originalState *TestSta
 	if !state.testComplete {
 		return true // Test was interrupted, continue with a new test
 	}
-	
+
 	screen.Clear()
 	width, height := screen.Size()
-	
-	// Define styles
-	titleStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorFuchsia).
-		Bold(true)
-		
-	resultStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorGreen)
-		
-	defaultStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorDefault)
 	
 	// Calculate test metrics
 	duration := state.endTime.Sub(state.startTime).Minutes()
 	wpm := float64(len(state.referenceText)/5) / duration
-	
-	// Draw results frame
-	frame := []string{
-		"╔══════════════════════════════╗",
-		"║     SIMULATION COMPLETE      ║",
-		"║   ANALYZING PERFORMANCE...   ║",
-		"╚══════════════════════════════╝",
+	accuracy := 100.0
+	if len(state.userInput) > 0 {
+		accuracy = 100.0 * (1.0 - float64(state.errors)/float64(len(state.userInput)))
+	}
+	if accuracy < 0 {
+		accuracy = 0
 	}
 	
-	for i, line := range frame {
-		drawText(screen, (width-runewidth.StringWidth(line))/2, height/4+i, titleStyle, line)
-	}
+	// Display results with more spacing
+	drawCenteredText(screen, width/2, height/2-8, tcell.StyleDefault, "TEST COMPLETE")
 	
-	// Draw results
-	results := []string{
-		fmt.Sprintf("WPM: %.1f", wpm),
-		fmt.Sprintf("Errors: %d", state.errors),
-		fmt.Sprintf("Time: %.1fs", state.endTime.Sub(state.startTime).Seconds()),
-	}
+	// Show source
+	drawCenteredText(screen, width/2, height/2-6, tcell.StyleDefault, fmt.Sprintf("Source: %s", state.testFile))
 	
-	for i, line := range results {
-		drawText(screen, (width-runewidth.StringWidth(line))/2, height/4+len(frame)+2+i, resultStyle, line)
-	}
+	// Draw results with more spacing
+	drawCenteredText(screen, width/2, height/2-3, tcell.StyleDefault, fmt.Sprintf("WPM: %.1f", wpm))
+	drawCenteredText(screen, width/2, height/2-1, tcell.StyleDefault, fmt.Sprintf("Accuracy: %.1f%%", accuracy))
+	drawCenteredText(screen, width/2, height/2+1, tcell.StyleDefault, fmt.Sprintf("Time: %.1fs", state.endTime.Sub(state.startTime).Seconds()))
+	drawCenteredText(screen, width/2, height/2+3, tcell.StyleDefault, fmt.Sprintf("Characters: %d (Errors: %d)", len(state.userInput), state.errors))
 	
-	// Draw options
-	options := "Press [R] to retry, [N] for new test, [Q] to quit"
-	drawText(screen, (width-runewidth.StringWidth(options))/2, height/2+6, defaultStyle, options)
+	// Draw options with more spacing
+	drawCenteredText(screen, width/2, height/2+6, tcell.StyleDefault, "R: Retry  N: New Test  Q: Quit")
 	
 	screen.Show()
 	
@@ -512,30 +483,26 @@ func drawError(screen tcell.Screen, message string) {
 	screen.Clear()
 	width, height := screen.Size()
 	
-	errorStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorRed).
-		Bold(true)
-		
-	defaultStyle := tcell.StyleDefault.
-		Background(tcell.ColorDefault).
-		Foreground(tcell.ColorDefault)
-		
-	title := "ERROR"
-	drawText(screen, (width-len(title))/2, height/3, errorStyle, title)
-	
-	drawText(screen, (width-len(message))/2, height/3+2, defaultStyle, message)
-	
-	instruction := "Press any key to continue or [ESC] to quit"
-	drawText(screen, (width-len(instruction))/2, height/3+4, defaultStyle, instruction)
+	// Display error message with more spacing
+	drawCenteredText(screen, width/2, height/2-4, tcell.StyleDefault, "ERROR")
+	drawCenteredText(screen, width/2, height/2, tcell.StyleDefault, message)
+	drawCenteredText(screen, width/2, height/2+4, tcell.StyleDefault, "Press any key to retry, ESC to quit")
 	
 	screen.Show()
 }
 
+// Helper function to draw text at a specific position
 func drawText(screen tcell.Screen, x, y int, style tcell.Style, text string) {
 	for i, r := range text {
 		screen.SetContent(x+i, y, r, nil, style)
 	}
+}
+
+// Helper function to draw centered text
+func drawCenteredText(screen tcell.Screen, x, y int, style tcell.Style, text string) {
+	textWidth := runewidth.StringWidth(text)
+	startX := x - textWidth/2
+	drawText(screen, startX, y, style, text)
 }
 
 func waitForKey(screen tcell.Screen) bool {
