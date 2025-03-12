@@ -198,11 +198,23 @@ func runTypingTest(screen tcell.Screen, state *TestState) TestState {
 					state.userInput = state.userInput[:len(state.userInput)-1]
 				}
 			} else if ev.Key() == tcell.KeyEnter {
-				// Handle enter key - add a newline if reference text has one
-				if len(state.userInput) < len(state.referenceText) &&
-					len(state.referenceText) > len(state.userInput) &&
-					state.referenceText[len(state.userInput)] == '\n' {
-					state.userInput += "\n"
+				// Always allow Enter key to add a newline
+				if !state.testStarted {
+					state.testStarted = true
+					state.startTime = time.Now()
+				}
+				
+				// Add the newline
+				state.userInput += "\n"
+				
+				// Check if the newline matches the reference text
+				if len(state.userInput) <= len(state.referenceText) {
+					if state.referenceText[len(state.userInput)-1] != '\n' {
+						state.errors++
+					}
+				} else {
+					// Extra character is an error
+					state.errors++
 				}
 			} else if r := ev.Rune(); r != 0 {
 				// Handle character input
@@ -235,27 +247,89 @@ func runTypingTest(screen tcell.Screen, state *TestState) TestState {
 	}
 }
 
+// renderScreen handles the UI drawing with adaptive layout
 func renderScreen(screen tcell.Screen, state *TestState, width int) {
 	screen.Clear()
 
 	// Get screen dimensions
 	width, screenHeight := screen.Size()
 	
-	// Set horizontal padding
-	hPadding := 4
+	// Check for minimum screen size
+	minWidth := 40
+	minHeight := 15
+	
+	if width < minWidth || screenHeight < minHeight {
+		// Screen is too small, render minimal UI with error message
+		renderMinimalScreen(screen, state, width, screenHeight)
+		return
+	}
+	
+	// Set horizontal padding (adaptive based on screen width)
+	hPadding := min(4, width/10)
 	
 	// Calculate content width for wrapping
-	contentWidth := width - (hPadding * 2)
+	contentWidth := max(20, width - (hPadding * 2))
 	
-	// Draw header with more padding
-	headerText := "KEYSMASH - TYPING TEST"
-	drawCenteredText(screen, width/2, 1, tcell.StyleDefault, headerText)
+	// Draw header (adaptive based on space)
+	if screenHeight >= 18 {
+		headerText := "KEYSMASH - TYPING TEST"
+		drawCenteredText(screen, width/2, 1, tcell.StyleDefault, headerText)
+		
+		// Show file name
+		sourceText := fmt.Sprintf("Source: %s", state.testFile)
+		drawCenteredText(screen, width/2, 3, tcell.StyleDefault, sourceText)
+	} else {
+		// For smaller screens, just show a compact header
+		headerText := "KEYSMASH"
+		drawCenteredText(screen, width/2, 0, tcell.StyleDefault, headerText)
+	}
 	
-	// Show file name
-	sourceText := fmt.Sprintf("Source: %s", state.testFile)
-	drawCenteredText(screen, width/2, 3, tcell.StyleDefault, sourceText)
+	// Wrap all text first
+	refLines := wrapText(state.referenceText, contentWidth)
+	inputLines := []string{}
+	if len(state.userInput) > 0 {
+		inputLines = wrapText(state.userInput, contentWidth)
+	}
+	
+	// Calculate cursor position
+	cursorPos := 0
+	cursorLine := 0
+	if len(inputLines) > 0 {
+		lastLine := inputLines[len(inputLines)-1]
+		cursorPos = runewidth.StringWidth(lastLine)
+		cursorLine = len(inputLines) - 1
+	}
+	
+	// Calculate dynamic UI layout
+	var topMargin, statsHeight, refHeaderHeight, refSectionHeight int
+	var inputHeaderHeight, inputSectionHeight, bottomMargin int
+	
+	// Adaptive layout based on screen size
+	if screenHeight >= 24 {
+		// Full featured layout for large screens
+		topMargin = 4
+		statsHeight = 3
+		refHeaderHeight = 2
+		bottomMargin = 3
+		inputHeaderHeight = 2
+	} else if screenHeight >= 18 {
+		// Medium layout
+		topMargin = 2
+		statsHeight = 2
+		refHeaderHeight = 1
+		bottomMargin = 2
+		inputHeaderHeight = 1
+	} else {
+		// Minimal layout
+		topMargin = 1
+		statsHeight = 1
+		refHeaderHeight = 1
+		bottomMargin = 2
+		inputHeaderHeight = 1
+	}
 	
 	// Draw stats if test started
+	statsY := topMargin
 	if state.testStarted {
 		elapsed := time.Since(state.startTime).Seconds()
 		
@@ -265,107 +339,248 @@ func renderScreen(screen tcell.Screen, state *TestState, width int) {
 			wpm = 0
 		}
 		
-		// Display stats
-		statsText := fmt.Sprintf("Time: %.1fs | WPM: %.1f | Errors: %d", 
-			elapsed, wpm, state.errors)
-		drawCenteredText(screen, width/2, 5, tcell.StyleDefault, statsText)
-		
-		// Display progress percentage
-		completionPct := float64(len(state.userInput)) / float64(len(state.referenceText))
-		if completionPct > 1.0 {
-			completionPct = 1.0
+		// Display stats (adaptive based on space)
+		if screenHeight >= 18 {
+			statsText := fmt.Sprintf("Time: %.1fs | WPM: %.1f | Errors: %d", 
+				elapsed, wpm, state.errors)
+			drawCenteredText(screen, width/2, statsY, tcell.StyleDefault, statsText)
+			
+			// Display progress percentage
+			completionPct := float64(len(state.userInput)) / float64(len(state.referenceText))
+			if completionPct > 1.0 {
+				completionPct = 1.0
+			}
+			
+			pctText := fmt.Sprintf("Progress: %d%%", int(completionPct*100))
+			drawText(screen, hPadding, statsY+1, tcell.StyleDefault, pctText)
+		} else {
+			// Compact stats for smaller screens
+			statsText := fmt.Sprintf("WPM: %.1f | Err: %d", wpm, state.errors)
+			drawCenteredText(screen, width/2, statsY, tcell.StyleDefault, statsText)
 		}
-		
-		pctText := fmt.Sprintf("Progress: %d%%", int(completionPct*100))
-		drawText(screen, hPadding, 7, tcell.StyleDefault, pctText)
 	}
 	
-	// Draw divider with more padding
-	drawText(screen, 0, 9, tcell.StyleDefault, strings.Repeat("-", width))
-
-	// Determine maximum content height to prevent overflow
-	maxContentHeight := screenHeight - 18 // More space for headers and footers
+	// Calculate main content area boundaries
+	contentStartY := topMargin + statsHeight + 1
+	contentEndY := screenHeight - bottomMargin
+	contentHeight := contentEndY - contentStartY
 	
-	// Draw reference text title with more padding
-	drawText(screen, hPadding, 11, tcell.StyleDefault, "Text to type:")
-	
-	// Wrap and draw reference text
-	refLines := wrapText(state.referenceText, contentWidth)
-	
-	// Limit to half of available space
-	maxRefLines := maxContentHeight / 2
-	if len(refLines) > maxRefLines {
-		refLines = refLines[:maxRefLines]
+	// Safety check - ensure we have minimum content space
+	if contentHeight < 4 {
+		// Screen is too small, render minimal UI with error message
+		renderMinimalScreen(screen, state, width, screenHeight)
+		return
 	}
 	
-	// Draw reference text with more padding between lines
-	for i, line := range refLines {
-		drawText(screen, hPadding, 13+i, tcell.StyleDefault, line)
-	}
+	// Dynamic space allocation - reference gets 1/3, input gets 2/3
+	// but ensure at least 2 lines for each section
+	refSectionHeight = max(2, contentHeight / 3)
+	inputSectionHeight = max(2, contentHeight - refSectionHeight - refHeaderHeight - inputHeaderHeight - 1) // -1 for separator
 	
-	// Draw separator between reference and input with more space
-	separatorY := 13 + len(refLines) + 2
-	drawText(screen, 0, separatorY, tcell.StyleDefault, strings.Repeat("-", width))
+	// Reference text section
+	refTextTitleY := contentStartY
+	refTextStartY := refTextTitleY + refHeaderHeight
 	
-	// Draw input area label with more padding
-	inputLabelY := separatorY + 2
-	drawText(screen, hPadding, inputLabelY, tcell.StyleDefault, "Your typing:")
+	// Draw divider between stats and content
+	drawText(screen, 0, contentStartY-1, tcell.StyleDefault, strings.Repeat("-", width))
 	
-	// Draw user input with more padding
-	userInputY := inputLabelY + 2
+	// Draw reference text title
+	drawText(screen, hPadding, refTextTitleY, tcell.StyleDefault, "Text to type:")
 	
-	// Fixed cursor position calculation to handle multibyte characters correctly
-	cursorPos := 0
-	cursorLine := 0
-	
-	if len(state.userInput) > 0 {
-		// Wrap user input for display
-		inputLines := wrapText(state.userInput, contentWidth)
-		
-		// Draw user input lines
-		for i, line := range inputLines {
-			drawText(screen, hPadding, userInputY+i, tcell.StyleDefault, line)
+	// Ensure we have at least one line to display reference text
+	if refSectionHeight > 0 {
+		// Handle case when reference text is longer than available space
+		if len(refLines) > refSectionHeight {
+			// Calculate which portion to display based on typing progress
+			refProgress := 0.0
+			if len(state.referenceText) > 0 {
+				refProgress = float64(len(state.userInput)) / float64(len(state.referenceText))
+			}
+			refMidpoint := int(refProgress * float64(len(refLines)))
+			
+			// Calculate start/end lines with bounds checking
+			refStartLine := max(0, refMidpoint-(refSectionHeight/2))
+			refEndLine := min(len(refLines), refStartLine+refSectionHeight)
+			
+			// Adjust if we're near the end
+			if refEndLine >= len(refLines) {
+				refStartLine = max(0, len(refLines)-refSectionHeight)
+				refEndLine = len(refLines)
+			}
+			
+			// Safety check for array bounds
+			if refStartLine < refEndLine && refStartLine >= 0 && refEndLine <= len(refLines) {
+				// Draw only the visible portion
+				for i, line := range refLines[refStartLine:refEndLine] {
+					drawText(screen, hPadding, refTextStartY+i, tcell.StyleDefault, line)
+				}
+				
+				// Add scroll indicators if needed (if we have room)
+				if refStartLine > 0 && width > 20 {
+					drawText(screen, width-6, refTextStartY, tcell.StyleDefault, "↑")
+				}
+				if refEndLine < len(refLines) && width > 20 {
+					drawText(screen, width-6, refTextStartY+refSectionHeight-1, tcell.StyleDefault, "↓")
+				}
+			}
+		} else if len(refLines) > 0 {
+			// Draw all reference text if it fits
+			for i, line := range refLines {
+				if i < refSectionHeight { // Bounds check
+					drawText(screen, hPadding, refTextStartY+i, tcell.StyleDefault, line)
+				}
+			}
 		}
-		
-		// Calculate cursor position
+	}
+	
+	// Calculate input section position
+	separatorY := refTextStartY + refSectionHeight
+	inputLabelY := separatorY + 1
+	inputStartY := inputLabelY + inputHeaderHeight
+	
+	// Draw separator between reference and input
+	if separatorY < screenHeight-1 {
+		drawText(screen, 0, separatorY, tcell.StyleDefault, strings.Repeat("-", width))
+	}
+	
+	// Draw input area label
+	if inputLabelY < screenHeight-1 {
+		drawText(screen, hPadding, inputLabelY, tcell.StyleDefault, "Your typing:")
+	}
+	
+	// Draw user input if we have space
+	if inputSectionHeight > 0 && inputStartY < screenHeight-1 {
 		if len(inputLines) > 0 {
-			// Last line length gives cursor position
-			lastLine := inputLines[len(inputLines)-1]
-			cursorPos = runewidth.StringWidth(lastLine)
-			cursorLine = len(inputLines) - 1
+			// Calculate how many lines we can display
+			inputStartLine := 0
+			
+			// If cursor would be beyond visible area, scroll to show it
+			if cursorLine >= inputSectionHeight {
+				// Keep cursor a few lines from the bottom for context
+				inputStartLine = max(0, cursorLine-(inputSectionHeight-1))
+			}
+			
+			// Calculate the end line (capped by available lines or content)
+			inputEndLine := min(len(inputLines), inputStartLine+inputSectionHeight)
+			
+			// Safety check for array bounds
+			if inputStartLine < inputEndLine && inputStartLine >= 0 && inputEndLine <= len(inputLines) {
+				// Draw visible input lines
+				for i, line := range inputLines[inputStartLine:inputEndLine] {
+					if inputStartY+i < screenHeight-1 { // Bounds check
+						drawText(screen, hPadding, inputStartY+i, tcell.StyleDefault, line)
+					}
+				}
+				
+				// Add scroll indicators if needed (if we have room)
+				if inputStartLine > 0 && width > 20 {
+					drawText(screen, width-6, inputStartY, tcell.StyleDefault, "↑")
+				}
+				if inputEndLine < len(inputLines) && width > 20 && inputStartY+inputSectionHeight-1 < screenHeight-1 {
+					drawText(screen, width-6, inputStartY+inputSectionHeight-1, tcell.StyleDefault, "↓")
+				}
+			}
+			
+			// Position cursor (with bounds checking)
+			if cursorLine >= inputStartLine {
+				cursorY := inputStartY + (cursorLine - inputStartLine)
+				cursorX := hPadding + cursorPos
+				
+				if cursorX < width && cursorY < screenHeight-1 {
+					// Draw blinking cursor at end of input
+					if time.Now().UnixNano()/4e7%10 >= 5 {
+						screen.SetContent(cursorX, cursorY, ' ', nil, tcell.StyleDefault.Reverse(true))
+					} else {
+						screen.SetContent(cursorX, cursorY, '_', nil, tcell.StyleDefault)
+					}
+				}
+			}
+		} else {
+			// No input yet, just show cursor at start position
+			cursorX := hPadding
+			cursorY := inputStartY
+			
+			if cursorX < width && cursorY < screenHeight-1 {
+				if time.Now().UnixNano()/4e7%10 >= 5 {
+					screen.SetContent(cursorX, cursorY, ' ', nil, tcell.StyleDefault.Reverse(true))
+				} else {
+					screen.SetContent(cursorX, cursorY, '_', nil, tcell.StyleDefault)
+				}
+			}
 		}
 	}
 	
-	// Draw blinking cursor at end of input
-	cursorX := hPadding + cursorPos
-	cursorY := userInputY + cursorLine
-	
-	if time.Now().UnixNano()/4e7%10 >= 5 {
-		screen.SetContent(cursorX, cursorY, ' ', nil, tcell.StyleDefault.Reverse(true))
-	} else {
-		screen.SetContent(cursorX, cursorY, '_', nil, tcell.StyleDefault)
+	// Draw progress bar at bottom
+	progressBarY := screenHeight - 2
+	if progressBarY > 0 {
+		progress := 0
+		if len(state.referenceText) > 0 {
+			progress = len(state.userInput) * 100 / len(state.referenceText)
+		}
+		
+		// Adaptive progress bar width
+		progressBarWidth := min(60, width - (2 * hPadding))
+		if progressBarWidth < 10 {
+			// Just show percentage for very narrow screens
+			progressText := fmt.Sprintf("%d%%", progress)
+			drawCenteredText(screen, width/2, progressBarY, tcell.StyleDefault, progressText)
+		} else {
+			// Draw progress bar
+			filledWidth := progressBarWidth * progress / 100
+			
+			progressBar := fmt.Sprintf("[%s%s] %d%%", 
+				strings.Repeat("=", filledWidth), 
+				strings.Repeat(" ", progressBarWidth-filledWidth),
+				progress)
+			drawText(screen, hPadding, progressBarY, tcell.StyleDefault, progressBar)
+		}
+		
+		// Draw help text at very bottom
+		if screenHeight > 2 {
+			drawText(screen, hPadding, screenHeight-1, tcell.StyleDefault, "ESC to quit")
+		}
 	}
-	
-	// Draw progress indicator with more padding
-	progressBarY := screenHeight - 3
-	progress := 0
-	if len(state.referenceText) > 0 {
-		progress = len(state.userInput) * 100 / len(state.referenceText)
-	}
-	
-	// Create a wider progress bar
-	progressBarWidth := 60
-	filledWidth := progressBarWidth * progress / 100
-	
-	progressBar := fmt.Sprintf("[%s%s] %d%%", 
-		strings.Repeat("=", filledWidth), 
-		strings.Repeat(" ", progressBarWidth-filledWidth),
-		progress)
-	drawText(screen, hPadding, progressBarY, tcell.StyleDefault, progressBar)
-	
-	// Draw help text
-	drawText(screen, hPadding, screenHeight-1, tcell.StyleDefault, "ESC to quit")
 
+	screen.Show()
+}
+
+// renderMinimalScreen is a simplified UI for very small terminal windows
+func renderMinimalScreen(screen tcell.Screen, state *TestState, width, height int) {
+	// Show compact header
+	if height > 0 {
+		title := "KEYSMASH"
+		if width < len(title) {
+			title = title[:width]
+		}
+		drawCenteredText(screen, width/2, 0, tcell.StyleDefault, title)
+	}
+	
+	// Show an error message about screen size
+	if height > 2 && width > 15 {
+		msg := "Window too small"
+		drawCenteredText(screen, width/2, 2, tcell.StyleDefault, msg)
+	}
+	
+	// Show minimal stats if we have room
+	if height > 4 && state.testStarted {
+		elapsed := time.Since(state.startTime).Seconds()
+		wpm := float64(len(state.userInput)/5) / (elapsed / 60.0)
+		if wpm < 0 || elapsed < 1 {
+			wpm = 0
+		}
+		
+		statsText := fmt.Sprintf("WPM:%.1f", wpm)
+		if width > len(statsText)+2 {
+			drawCenteredText(screen, width/2, 4, tcell.StyleDefault, statsText)
+		}
+	}
+	
+	// Show help if we have room
+	if height > 6 && width > 15 {
+		helpText := "ESC to quit"
+		drawCenteredText(screen, width/2, 6, tcell.StyleDefault, helpText)
+	}
+	
 	screen.Show()
 }
 
