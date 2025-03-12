@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"github.com/mattn/go-runewidth"
 	"strings"
+	"testing"
 )
 
-func wrapText(text string, width int) []string {
+// testWrapText is a separate implementation for testing purposes
+func testWrapText(text string, width int) []string {
 	var lines []string
 	
 	// Handle newlines properly
@@ -32,7 +34,7 @@ func wrapText(text string, width int) []string {
 			
 			// If word is too wide for its own line, split it
 			if wordWidth > width {
-				if currentLine \!= "" {
+				if currentLine != "" {
 					lines = append(lines, currentLine)
 					currentLine = ""
 					currentWidth = 0
@@ -82,7 +84,7 @@ func wrapText(text string, width int) []string {
 			}
 		}
 		
-		if currentLine \!= "" {
+		if currentLine != "" {
 			lines = append(lines, currentLine)
 		}
 	}
@@ -90,29 +92,85 @@ func wrapText(text string, width int) []string {
 	return lines
 }
 
-func testWrap(text string, width int) {
-	fmt.Printf("Original text: %q\n", text)
-	fmt.Printf("Wrapping at width %d:\n", width)
-	lines := wrapText(text, width)
-	for i, line := range lines {
-		fmt.Printf("Line %d: %q\n", i+1, line)
+func TestWrapText(t *testing.T) {
+	testCases := []struct {
+		name     string
+		text     string
+		width    int
+		expected []string
+	}{
+		{
+			name:     "Normal paragraph",
+			text:     "This is a test of the word wrapping function. It should wrap at word boundaries.",
+			width:    20,
+			expected: []string{"This is a test of", "the word wrapping", "function. It should", "wrap at word", "boundaries."},
+		},
+		{
+			name:     "Long word",
+			text:     "This contains a verylongwordthatwillneedtobesplitacrossmultiplelines because it's too long.",
+			width:    20,
+			expected: []string{"This contains a", "verylongwordthatwil", "lneedtobesplitacros", "smultiplelines", "because it's too", "long."},
+		},
+		{
+			name:     "Text with newlines",
+			text:     "This has\na newline\nin it.",
+			width:    20,
+			expected: []string{"This has", "a newline", "in it."},
+		},
+		{
+			name:  "Empty string",
+			text:  "",
+			width: 20,
+			expected: []string{},
+		},
+		{
+			name:     "Single character",
+			text:     "x",
+			width:    20,
+			expected: []string{"x"},
+		},
 	}
-	fmt.Println()
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := wrapText(tc.text, tc.width)
+			
+			// Compare results
+			if len(result) != len(tc.expected) {
+				t.Errorf("Expected %d lines, got %d lines", len(tc.expected), len(result))
+				return
+			}
+			
+			for i := range result {
+				if result[i] != tc.expected[i] {
+					t.Errorf("Line %d: expected %q, got %q", i+1, tc.expected[i], result[i])
+				}
+			}
+		})
+	}
 }
 
-func main() {
-	// Test case 1: Normal paragraph
-	testWrap("This is a test of the word wrapping function. It should wrap at word boundaries.", 20)
-	
-	// Test case 2: Long word
-	testWrap("This contains a verylongwordthatwillneedtobesplitacrossmultiplelines because it's too long.", 20)
-	
-	// Test case 3: Text with newlines
-	testWrap("This has\na newline\nin it.", 20)
-	
-	// Test case 4: Empty string
-	testWrap("", 20)
-	
-	// Test case 5: Single character
-	testWrap("x", 20)
+// TestWrapTextSpecial is a more manual test for debugging purposes
+func TestWrapTextSpecial(t *testing.T) {
+	// These tests just print the output for visual inspection
+	testCases := []struct {
+		text  string
+		width int
+	}{
+		{"This is a test of the word wrapping function. It should wrap at word boundaries.", 20},
+		{"This contains a verylongwordthatwillneedtobesplitacrossmultiplelines because it's too long.", 20},
+		{"This has\na newline\nin it.", 20},
+		{"", 20},
+		{"x", 20},
+	}
+
+	for _, tc := range testCases {
+		fmt.Printf("Original text: %q\n", tc.text)
+		fmt.Printf("Wrapping at width %d:\n", tc.width)
+		lines := wrapText(tc.text, tc.width)
+		for i, line := range lines {
+			fmt.Printf("Line %d: %q\n", i+1, line)
+		}
+		fmt.Println()
+	}
 }

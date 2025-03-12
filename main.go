@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 )
+
+// Global variable to store the path to the tests directory
+var testsDir string
 
 type TestState struct {
 	referenceText string
@@ -20,6 +24,40 @@ type TestState struct {
 	testStarted   bool
 	testComplete  bool
 	testFile      string
+}
+
+// findTestsDir tries to locate the tests directory in various locations
+func findTestsDir() string {
+	// Try current directory first
+	if _, err := os.Stat("tests"); err == nil {
+		return "tests"
+	}
+
+	// Try executable directory
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		testsInExecDir := filepath.Join(execDir, "tests")
+		if _, err := os.Stat(testsInExecDir); err == nil {
+			return testsInExecDir
+		}
+		
+		// Check one level up (for GOPATH/bin scenario)
+		parentDir := filepath.Dir(execDir)
+		testsInParentDir := filepath.Join(parentDir, "tests")
+		if _, err := os.Stat(testsInParentDir); err == nil {
+			return testsInParentDir
+		}
+	}
+	
+	// Try the source directory where keysmash was built
+	sourceDir := "/Users/phaedrus/Development/keysmash/tests"
+	if _, err := os.Stat(sourceDir); err == nil {
+		return sourceDir
+	}
+
+	// Not found
+	return ""
 }
 
 func main() {
@@ -43,9 +81,10 @@ func main() {
 	defStyle := tcell.StyleDefault
 	screen.SetStyle(defStyle)
 
-	// Check if tests directory exists
-	if _, err := os.Stat("tests"); os.IsNotExist(err) {
-		drawError(screen, "Tests directory not found. Please create 'tests/' directory with text files.")
+	// Find tests directory
+	testsDir = findTestsDir()
+	if testsDir == "" {
+		drawError(screen, "Tests directory not found. Please create a 'tests' directory with text files.")
 		waitForKey(screen)
 		return
 	}
@@ -97,8 +136,8 @@ func showWelcomeScreen(screen tcell.Screen) {
 }
 
 func selectRandomTest() (TestState, error) {
-	// Read test files
-	files, err := os.ReadDir("tests")
+	// Read test files from the identified tests directory
+	files, err := os.ReadDir(testsDir)
 	if err != nil {
 		return TestState{}, err
 	}
@@ -112,14 +151,14 @@ func selectRandomTest() (TestState, error) {
 	}
 
 	if len(textFiles) == 0 {
-		return TestState{}, fmt.Errorf("no .txt files found in tests/ directory")
+		return TestState{}, fmt.Errorf("no .txt files found in %s directory", testsDir)
 	}
 
 	// Select random file
 	randomFile := textFiles[rand.Intn(len(textFiles))]
 
-	// Read file content
-	content, err := os.ReadFile("tests/" + randomFile.Name())
+	// Read file content using the full path
+	content, err := os.ReadFile(filepath.Join(testsDir, randomFile.Name()))
 	if err != nil {
 		return TestState{}, err
 	}

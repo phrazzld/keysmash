@@ -1,4 +1,4 @@
-module typing-eva
+module github.com/phaedrus/keysmash
 
 go 1.18
 
